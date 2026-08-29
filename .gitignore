@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+output/
+tmp/
+.vite/
+.playwright-cli/
+.taskbook-review/
+*.log
+.DS_Store
