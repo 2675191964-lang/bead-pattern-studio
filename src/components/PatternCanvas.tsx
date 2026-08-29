@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { applyRect, floodFill } from '../core/pattern/pattern';
-import { renderPatternToCanvas, type RenderMode } from '../renderers/patternRenderer';
+import { cellSizeForView, renderPatternToCanvas, type RenderMode } from '../renderers/patternRenderer';
 import { TRANSPARENT_CELL, type PatternGrid } from '../types';
 
 export type EditorTool = 'brush' | 'eraser' | 'fill' | 'picker' | 'rect' | 'pan';
@@ -28,7 +28,7 @@ export function PatternCanvas({
   const drawing = useRef(false);
   const rectStart = useRef<number | undefined>(undefined);
   const locked = useMemo(() => new Set(lockedPaletteIndices), [lockedPaletteIndices]);
-  const cellSize = Math.max(mode === 'blueprint' ? 18 : 10, (mode === 'blueprint' ? 22 : 14) * zoom);
+  const cellSize = cellSizeForView(mode, zoom);
   const displayGrid = useMemo(() => ({ ...grid, cells: draftCells }), [grid, draftCells]);
 
   useEffect(() => {

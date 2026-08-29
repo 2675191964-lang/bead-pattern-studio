@@ -5,6 +5,7 @@ import { useProjects } from '../app/ProjectContext';
 import { PatternCanvas } from '../components/PatternCanvas';
 import { boardLayout, patternStats } from '../core/pattern/pattern';
 import { createMaterialsCsv, exportCsv, exportPdf, exportPng, exportProjectJson, exportSvg } from '../features/export/exporters';
+import { fitZoomForGrid } from '../renderers/patternRenderer';
 
 export function ExportPage() {
   const { id } = useParams();
@@ -43,7 +44,7 @@ export function ExportPage() {
       <div className="export-layout">
         <section className="export-preview card">
           <div className="card-heading"><div><span className="eyebrow">实时预览</span><h2>{project.name}</h2></div><span className="badge">施工图</span></div>
-          <div className="export-canvas-scroll"><PatternCanvas grid={project.grid} mode="blueprint" zoom={0.6} boardWidth={project.settings.boardWidth} boardHeight={project.settings.boardHeight} /></div>
+          <div className="export-canvas-scroll"><PatternCanvas grid={project.grid} mode="blueprint" zoom={fitZoomForGrid(project.grid.width, project.grid.height, 'blueprint', 640)} boardWidth={project.settings.boardWidth} boardHeight={project.settings.boardHeight} /></div>
           <div className="summary-strip">
             <div><strong>{project.grid.width}×{project.grid.height}</strong><span>网格</span></div>
             <div><strong>{stats.total}</strong><span>总豆数</span></div>

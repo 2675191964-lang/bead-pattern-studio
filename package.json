@@ -1,7 +1,7 @@
 {
   "name": "bead-pattern-studio",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Privacy-first offline fuse-bead pattern editor and exporter",
   "license": "MIT",

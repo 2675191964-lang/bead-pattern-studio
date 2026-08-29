@@ -43,4 +43,24 @@ describe('确定性图片转换', () => {
   it('没有候选色时返回可理解错误', () => {
     expect(() => convertImageToPattern(solidImage(2, 2, [255, 0, 0]), settings, palette.map((item) => ({ ...item, active: false })))).toThrow('没有可用颜色');
   });
+
+  it('限色时保留低频但关键的深色轮廓与高饱和颜色', () => {
+    const diversePalette = [
+      bead('WHITE', [248, 248, 242]), bead('MINT', [165, 225, 210]), bead('CREAM', [246, 232, 205]),
+      bead('DARK', [28, 36, 42]), bead('PINK', [224, 58, 132])
+    ];
+    const width = 20;
+    const height = 20;
+    const data = new Uint8ClampedArray(width * height * 4);
+    const colors: RGB[] = [
+      ...Array<RGB>(280).fill([248, 248, 242]), ...Array<RGB>(60).fill([165, 225, 210]),
+      ...Array<RGB>(40).fill([246, 232, 205]), ...Array<RGB>(10).fill([28, 36, 42]), ...Array<RGB>(10).fill([224, 58, 132])
+    ];
+    colors.forEach((rgb, index) => data.set([...rgb, 255], index * 4));
+    const result = convertImageToPattern({ width, height, data }, { ...settings, gridWidth: width, gridHeight: height, maxColors: 4 }, diversePalette);
+    const codes = patternStats(result.grid).colors.map((item) => item.color.code);
+    expect(codes).toContain('DARK');
+    expect(codes).toContain('PINK');
+    expect(codes).toHaveLength(4);
+  });
 });

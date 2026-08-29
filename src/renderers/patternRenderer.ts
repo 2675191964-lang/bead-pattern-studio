@@ -10,6 +10,28 @@ export interface RenderOptions {
   showCodes?: boolean;
 }
 
+export const MAX_CANVAS_BITMAP_PIXELS = 8_000_000;
+const MAX_CANVAS_BITMAP_EDGE = 8192;
+
+export function cellSizeForView(mode: RenderMode, zoom: number): number {
+  const base = mode === 'blueprint' ? 22 : 14;
+  const minimum = mode === 'blueprint' ? 2.5 : 1.5;
+  return Math.max(minimum, base * zoom);
+}
+
+export function fitZoomForGrid(width: number, height: number, mode: RenderMode, targetEdge = 760): number {
+  const base = mode === 'blueprint' ? 22 : 14;
+  const zoom = Math.max(0.1, Math.min(1, targetEdge / (Math.max(width, height) * base)));
+  return Math.round(zoom * 100) / 100;
+}
+
+export function canvasRenderScale(logicalWidth: number, logicalHeight: number, deviceScale: number): number {
+  const requested = Math.max(0.1, Math.min(deviceScale || 1, 2));
+  const pixelBudgetScale = Math.sqrt(MAX_CANVAS_BITMAP_PIXELS / Math.max(1, logicalWidth * logicalHeight));
+  const edgeScale = Math.min(MAX_CANVAS_BITMAP_EDGE / Math.max(1, logicalWidth), MAX_CANVAS_BITMAP_EDGE / Math.max(1, logicalHeight));
+  return Math.max(0.1, Math.min(requested, pixelBudgetScale, edgeScale));
+}
+
 function textColor(hex: string): string {
   const r = Number.parseInt(hex.slice(1, 3), 16);
   const g = Number.parseInt(hex.slice(3, 5), 16);
@@ -18,18 +40,19 @@ function textColor(hex: string): string {
 }
 
 export function renderPatternToCanvas(canvas: HTMLCanvasElement, grid: PatternGrid, mode: RenderMode, options: RenderOptions): void {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const margin = mode === 'blueprint' ? Math.max(24, options.cellSize) : 0;
   const logicalWidth = grid.width * options.cellSize + margin;
   const logicalHeight = grid.height * options.cellSize + margin;
-  canvas.width = Math.ceil(logicalWidth * dpr);
-  canvas.height = Math.ceil(logicalHeight * dpr);
+  const renderScale = canvasRenderScale(logicalWidth, logicalHeight, window.devicePixelRatio || 1);
+  canvas.width = Math.max(1, Math.ceil(logicalWidth * renderScale));
+  canvas.height = Math.max(1, Math.ceil(logicalHeight * renderScale));
   canvas.style.width = `${logicalWidth}px`;
   canvas.style.height = `${logicalHeight}px`;
   canvas.style.aspectRatio = `${logicalWidth} / ${logicalHeight}`;
+  canvas.dataset.renderScale = renderScale.toFixed(3);
   const context = canvas.getContext('2d');
   if (!context) throw new Error('浏览器无法创建渲染画布');
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   context.clearRect(0, 0, logicalWidth, logicalHeight);
   if (!options.transparentBackground) {
     context.fillStyle = mode === 'bead' ? '#e8e2d8' : '#ffffff';
@@ -54,15 +77,20 @@ export function renderPatternToCanvas(canvas: HTMLCanvasElement, grid: PatternGr
       const top = margin + y * options.cellSize;
       if (mode === 'bead') {
         const radius = options.cellSize * 0.43;
-        const gradient = context.createRadialGradient(left + options.cellSize * 0.36, top + options.cellSize * 0.31, radius * 0.08, left + options.cellSize / 2, top + options.cellSize / 2, radius);
-        gradient.addColorStop(0, '#ffffff');
-        gradient.addColorStop(0.18, color.hex);
-        gradient.addColorStop(1, color.hex);
-        context.fillStyle = 'rgba(0,0,0,.14)';
-        context.beginPath();
-        context.arc(left + options.cellSize * 0.53, top + options.cellSize * 0.56, radius, 0, Math.PI * 2);
-        context.fill();
-        context.fillStyle = gradient;
+        const detailedBead = grid.cells.length <= 10_000 && options.cellSize >= 6;
+        if (detailedBead) {
+          const gradient = context.createRadialGradient(left + options.cellSize * 0.36, top + options.cellSize * 0.31, radius * 0.08, left + options.cellSize / 2, top + options.cellSize / 2, radius);
+          gradient.addColorStop(0, '#ffffff');
+          gradient.addColorStop(0.18, color.hex);
+          gradient.addColorStop(1, color.hex);
+          context.fillStyle = 'rgba(0,0,0,.14)';
+          context.beginPath();
+          context.arc(left + options.cellSize * 0.53, top + options.cellSize * 0.56, radius, 0, Math.PI * 2);
+          context.fill();
+          context.fillStyle = gradient;
+        } else {
+          context.fillStyle = color.hex;
+        }
         context.beginPath();
         context.arc(left + options.cellSize / 2, top + options.cellSize / 2, radius, 0, Math.PI * 2);
         context.fill();

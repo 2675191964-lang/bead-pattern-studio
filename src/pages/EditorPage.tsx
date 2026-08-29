@@ -9,6 +9,7 @@ import { PatternCanvas, type EditorTool } from '../components/PatternCanvas';
 import { boardLayout, patternStats, remapDisabledColor, replaceColor } from '../core/pattern/pattern';
 import { decodeImage } from '../features/import/image';
 import { PALETTES } from '../core/palette/palettes';
+import { fitZoomForGrid } from '../renderers/patternRenderer';
 import { loadAsset } from '../storage/db';
 import { ConversionClient } from '../workers/conversionClient';
 import type { ConversionSettings, PatternGrid } from '../types';
@@ -31,10 +32,15 @@ export function EditorPage() {
   const [undoStack, setUndoStack] = useState<Uint16Array[]>([]);
   const [redoStack, setRedoStack] = useState<Uint16Array[]>([]);
   const client = useRef(new ConversionClient());
+  const normalizedLargeProjects = useRef(new Set<string>());
+  const canvasScrollRef = useRef<HTMLDivElement>(null);
+  const [canvasViewport, setCanvasViewport] = useState({ width: 0, height: 0 });
 
   const project = currentProject?.id === id ? currentProject : undefined;
   const stats = project?.grid ? patternStats(project.grid) : undefined;
   const boards = project?.grid ? boardLayout(project.grid, project.settings.boardWidth, project.settings.boardHeight) : undefined;
+  const isLargeGrid = Boolean(project?.grid && project.grid.cells.length > 10_000);
+  const fitTargetEdge = canvasViewport.width && canvasViewport.height ? Math.max(240, Math.min(canvasViewport.width, canvasViewport.height) - 96) : 760;
 
   useEffect(() => {
     if (!id) return;
@@ -43,6 +49,25 @@ export function EditorPage() {
   }, [id, currentProject?.id, openProject]);
 
   useEffect(() => () => client.current.cancel(), []);
+
+  useEffect(() => {
+    const element = canvasScrollRef.current;
+    if (!element) return;
+    const updateViewport = () => setCanvasViewport({ width: element.clientWidth, height: element.clientHeight });
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!project?.grid || !isLargeGrid || !canvasViewport.width || !canvasViewport.height) return;
+    const key = `${project.id}:${project.ui.viewMode}`;
+    if (normalizedLargeProjects.current.has(key)) return;
+    normalizedLargeProjects.current.add(key);
+    const zoom = fitZoomForGrid(project.grid.width, project.grid.height, project.ui.viewMode, fitTargetEdge);
+    updateProject((value) => ({ ...value, ui: { ...value.ui, zoom } }));
+  }, [canvasViewport.height, canvasViewport.width, fitTargetEdge, isLargeGrid, project?.grid, project?.id, project?.ui.viewMode, updateProject]);
 
   if (!project && !error) return <div className="center-state">正在打开项目…</div>;
   if (!project) return <div className="center-state"><h1>无法打开项目</h1><p>{error || '项目不存在。'}</p><Link className="primary" to="/">返回首页</Link></div>;
@@ -72,7 +97,11 @@ export function EditorPage() {
         ...value,
         settings,
         grid: result.grid,
-        ui: { ...value.ui, selectedPaletteIndex: firstUsed },
+        ui: {
+          ...value.ui,
+          selectedPaletteIndex: firstUsed,
+          zoom: result.grid.cells.length > 10_000 ? fitZoomForGrid(result.grid.width, result.grid.height, value.ui.viewMode, fitTargetEdge) : value.ui.zoom
+        },
       }));
       setStatusMessage(`转换完成 · ${result.diagnostics.opaqueCells} 颗 · ${result.diagnostics.selectedColors} 色 · ${Math.round(result.diagnostics.durationMs)} ms`);
     } catch (reason) {
@@ -211,6 +240,9 @@ export function EditorPage() {
             <button onClick={() => void runConversion({ dither: 'none', removeIsolated: true })}>平滑</button>
             <button onClick={() => void runConversion({ dither: 'none', removeIsolated: true, maxColors: Math.max(4, Math.round(project.settings.maxColors / 2)) })}>省色</button>
           </div>
+          {project.settings.gridWidth * project.settings.gridHeight > 10_000 && (
+            <div className="info-banner">大型网格将生成 {project.settings.gridWidth * project.settings.gridHeight} 格。程序会自动使用适屏预览并限制画布内存；导出仍保留完整网格。</div>
+          )}
           {converting ? (
             <div className="progress-box"><div><span>{STAGE_LABELS[progress.stage] ?? '处理中'}</span><strong>{Math.round(progress.ratio * 100)}%</strong></div><progress max="1" value={progress.ratio} /><button className="text-button" onClick={cancelConversion}><X size={15} />取消</button></div>
           ) : <button className="primary full" onClick={() => void runConversion()}><Sparkles size={18} />{project.grid ? '按当前设置重新生成' : '生成拼豆图案'}</button>}
@@ -229,9 +261,9 @@ export function EditorPage() {
                 ['flat', Eye, '平面'], ['blueprint', Grid3X3, '施工'], ['bead', CircleDot, '圆豆'], ['boards', Scan, '分板']
               ] as const).map(([value, Icon, label]) => <button key={value} aria-label={label} title={label} className={project.ui.viewMode === value ? 'active' : ''} onClick={() => updateProject((item) => ({ ...item, ui: { ...item.ui, viewMode: value } }))}><Icon size={17} /><span>{label}</span></button>)}
             </div>
-            <label className="zoom-control">缩放<input type="range" min="0.5" max="3" step="0.25" value={project.ui.zoom} onChange={(event) => updateProject((item) => ({ ...item, ui: { ...item.ui, zoom: Number(event.target.value) } }))} /></label>
+            <div className="zoom-control"><span>缩放 {Math.round(project.ui.zoom * 100)}%</span><input aria-label="缩放" type="range" min="0.1" max="3" step="0.01" value={project.ui.zoom} onChange={(event) => updateProject((item) => ({ ...item, ui: { ...item.ui, zoom: Number(event.target.value) } }))} /><button className="text-button" onClick={() => project.grid && updateProject((item) => ({ ...item, ui: { ...item.ui, zoom: fitZoomForGrid(project.grid!.width, project.grid!.height, item.ui.viewMode, fitTargetEdge) } }))}>适屏</button></div>
           </div>
-          <div className="canvas-scroll">
+          <div className="canvas-scroll" ref={canvasScrollRef}>
             {project.grid ? (
               <div className="canvas-stage">
                 <PatternCanvas

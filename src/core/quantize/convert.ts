@@ -108,11 +108,33 @@ function choosePaletteIndices(samples: Sample[], palette: BeadColor[], maxColors
     processed += 1;
     if (processed % 256 === 0) progress?.('palette', processed / Math.max(1, opaque.length));
   }
-  const selected = Array.from(counts.entries())
+  const candidates = Array.from(counts.entries())
     .filter(([, count]) => count > 0)
-    .sort((a, b) => b[1] - a[1] || palette[a[0]]!.code.localeCompare(palette[b[0]]!.code, undefined, { numeric: true }))
-    .slice(0, Math.min(maxColors, palette.length))
-    .map(([index]) => index);
+    .sort((a, b) => b[1] - a[1] || palette[a[0]]!.code.localeCompare(palette[b[0]]!.code, undefined, { numeric: true }));
+  const limit = Math.min(maxColors, candidates.length);
+  const frequencySlots = Math.max(1, Math.ceil(limit * 0.5));
+  const selected = candidates.slice(0, frequencySlots).map(([index]) => index);
+  const selectedSet = new Set(selected);
+
+  while (selected.length < limit) {
+    let bestIndex = -1;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const [candidateIndex, count] of candidates) {
+      if (selectedSet.has(candidateIndex)) continue;
+      const candidate = palette[candidateIndex]!;
+      const nearestSelectedDistance = selected.reduce((distance, selectedIndex) => (
+        Math.min(distance, ciede2000(candidate.lab, palette[selectedIndex]!.lab))
+      ), Number.POSITIVE_INFINITY);
+      const score = nearestSelectedDistance * (1 + Math.log2(count + 1));
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = candidateIndex;
+      }
+    }
+    if (bestIndex < 0) break;
+    selected.push(bestIndex);
+    selectedSet.add(bestIndex);
+  }
   progress?.('palette', 1);
   if (selected.length === 0 && opaque.length > 0) throw new Error('无法从图片中选择有效颜色');
   return selected;
