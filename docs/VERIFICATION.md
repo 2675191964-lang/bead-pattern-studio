@@ -22,6 +22,7 @@
 - 360×800 页面 `scrollWidth = clientWidth = 360`，上传、生成、编辑器、导出页均无横向溢出。
 - Service Worker 安装并接管后，断网打开 `/help` 深链成功。
 - E2E 监听上传、生成和导出主流程，未发现任何非 localhost 请求。
+- GitHub Pages 子路径构建使用哈希路由，避免静态托管刷新动态编辑/导出地址时返回 404。
 
 ## 证据边界
 
